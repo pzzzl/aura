@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
 import variables
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -16,6 +18,9 @@ FFMPEG_OPTIONS = {
 bot = commands.Bot(command_prefix=["!"], intents=intents)
 
 QUEUE = []
+SPOTIPY_CLIENT_ID = variables.CLIENT_ID_SPOTIFY
+SPOTIPY_CLIENT_SECRET = variables.CLIENT_SECRET_SPOTIFY
+sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET))
 
 
 @bot.event
@@ -37,14 +42,14 @@ async def join(ctx):
         await channel.connect()
     else:
         await ctx.voice_client.move_to(channel)
-    await ctx.send("Aura entrou no servidor.")
+    await ctx.send("Aura conectou ao servidor.")
 
 
 @bot.command(aliases=["exit", "quit", "dc", "disconnect"])
 async def leave(ctx):
     await ctx.voice_client.disconnect()
     QUEUE.clear()
-    await ctx.send("Aura saiu do servidor.")
+    await ctx.send("Aura foi desconectado do servidor.")
 
 
 @bot.command(aliases=["p"])
@@ -69,6 +74,19 @@ async def play(ctx, *, query):
     }
 
     ydl = youtube_dl.YoutubeDL(ydl_opts)
+
+    if "spotify.com" in query:
+        # Extrair a ID da faixa do link do Spotify
+        track_id = query.split("/")[-1].split("?")[0]
+        print(track_id)
+        try:
+            track_info = sp.track(track_id)
+            track_name = track_info["name"]
+            query = track_name  # Usar o título da música como query
+        except:
+            await ctx.send(content="Não foi possível obter informações da faixa do Spotify. Você está tentando colocar uma playist? Pois se estiver, tenho uma má notícia...")
+            return
+
     try:
         if "youtube.com" in query or "youtu.be" in query:
             info = ydl.extract_info(query, download=False)
