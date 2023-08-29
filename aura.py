@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
 import variables
+import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,7 +15,7 @@ FFMPEG_OPTIONS = {
 }
 
 bot = commands.Bot(
-    command_prefix=["aura ", "AURA ", "Aura", "aURA ", "arua "], intents=intents
+    command_prefix=["!"], intents=intents
 )
 
 QUEUE = []
@@ -71,58 +72,71 @@ async def play(ctx, *, query):
     }
 
     ydl = youtube_dl.YoutubeDL(ydl_opts)
-    if "youtube.com" in query or "youtu.be" in query:
-        info = ydl.extract_info(query, download=False)
-        url = info["url"]
-    else:
-        query = f"ytsearch:{query}"
-        info = ydl.extract_info(query, download=False)
-        url = info["entries"][0]["url"]
+    try:
+        if "youtube.com" in query or "youtu.be" in query:
+            info = ydl.extract_info(query, download=False)
+            url = info["url"]
+        else:
+            query = f"ytsearch:{query}"
+            info = ydl.extract_info(query, download=False)
+            url = info["entries"][0]["url"]
 
-    if 'entries' in info:
-        title = info['entries'][0]['title']
-        duration = info['entries'][0]['duration']
-    else:
-        title = info['title']
-        duration = info['duration']
+        if "entries" in info:
+            title = info["entries"][0]["title"]
+            duration = info["entries"][0]["duration"]
+        else:
+            title = info["title"]
+            duration = info["duration"]
+    except:
+        return await ctx.send("Música não encontrada.")
 
     duration_minutes = int(duration // 60)
     duration_seconds = int(duration % 60)
     duration = f"{duration_minutes}:{duration_seconds}"
 
-    
+    await msg.delete()
 
-    QUEUE.append(url)
+    msg = await ctx.send(f"Adicionado à fila: **{title}** `({duration})`")
+    QUEUE.append({"url": url, "title": title, "duration": duration, "message": msg})
     if not voice_client.is_playing():
-        await play_queue(ctx, voice_client, title, duration, msg)
+        await play_queue(ctx, voice_client)
 
 
 @bot.command(aliases=["next", "n", "s"])
 async def skip(ctx):
-    await ctx.send("Pulando música...")
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.stop()
-    if QUEUE:
-        await play_queue(ctx, ctx.voice_client)
 
 
 @bot.command(aliases=["q"])
 async def queue(ctx):
-    await ctx.send(QUEUE)
+    count = 1
+    out = ""
+    if not QUEUE:
+        await ctx.send(":x: Não há músicas na fila :x:")
+    for obj in QUEUE:
+        out = out + f"{count}. **{obj['title']}**\n"
+        count = count + 1
+    if out:
+        await ctx.send(out)
 
 
-async def play_queue(ctx, voice_client, title = None, duration = None, message = None):
+async def play_queue(ctx, voice_client):
     if QUEUE:
-        url = QUEUE.pop(0)
-        if title:
-            emoji = discord.PartialEmoji(name='aura_play', id=1145950272334614598)
-            await message.delete()
-            await ctx.send(f"{emoji} **{title}** `({duration})`")
+        obj = QUEUE.pop(0)
+        url = obj["url"]
+        if obj["title"]:
+            emoji = discord.PartialEmoji(name="aura_play", id=1145950272334614598)
+            await obj["message"].delete()
+            await ctx.send(f"{emoji} **{obj['title']}** `({obj['duration']})`")
         voice_client.stop()
+
         voice_client.play(
             discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS),
             after=lambda e: bot.loop.create_task(play_queue(ctx, voice_client)),
         )
+    else:
+        await ctx.send("Reprodução finalizada.")
 
 
 bot.run(variables.TOKEN)
