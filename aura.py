@@ -51,7 +51,7 @@ async def leave(ctx):
 
 @bot.command(aliases=["p"])
 async def play(ctx, *, query):
-    await ctx.send("Procurando...")
+    msg = await ctx.send("Procurando...")
     voice_channel = ctx.author.voice.channel
     if ctx.voice_client is None:
         await voice_channel.connect()
@@ -94,7 +94,7 @@ async def play(ctx, *, query):
 
     QUEUE.append(url)
     if not voice_client.is_playing():
-        await play_queue(ctx, voice_client, title, duration)
+        await play_queue(ctx, voice_client, title, duration, msg)
 
 
 @bot.command(aliases=["next", "n", "s"])
@@ -111,11 +111,13 @@ async def queue(ctx):
     await ctx.send(QUEUE)
 
 
-async def play_queue(ctx, voice_client, title = None, duration = None):
+async def play_queue(ctx, voice_client, title = None, duration = None, message = None):
     if QUEUE:
         url = QUEUE.pop(0)
         if title:
-            await ctx.send(f":notes: **{title}** `({duration})`")
+            emoji = discord.PartialEmoji(name='aura_play', id=1145950272334614598)
+            await message.delete()
+            await ctx.send(f"{emoji} **{title}** `({duration})`")
         voice_client.stop()
         voice_client.play(
             discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS),
