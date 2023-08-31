@@ -98,8 +98,8 @@ def extract_track_info(info):
 
 async def add_music_to_queue(ctx, info):
     obj = extract_track_info(info)
-    
-    obj['message'] = await ctx.send(obj["message"])
+
+    obj["message"] = await ctx.send(obj["message"])
     QUEUE.append(obj)
 
 
