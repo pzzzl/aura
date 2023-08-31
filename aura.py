@@ -9,15 +9,12 @@ import random
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
-
 FFMPEG_OPTIONS = {
     "executable": variables.FFMPEG_EXECUTABLE_PATH,
     "before_options": variables.FFMPEG_BEFORE_OPTIONS,
     "options": variables.FFMPEG_OPTIONS,
 }
-
 bot = commands.Bot(command_prefix=variables.PREFIX, intents=intents)
-
 QUEUE = []
 SPOTIPY_CLIENT_ID = variables.CLIENT_ID_SPOTIFY
 SPOTIPY_CLIENT_SECRET = variables.CLIENT_SECRET_SPOTIFY
@@ -27,47 +24,32 @@ sp = spotipy.Spotify(
     )
 )
 
+
 @bot.command()
 async def enviar_imagem_aleatoria(ctx):
-    # Lista de caminhos das imagens
-    image_paths = [
-        variables.PATH_AJUSTES_1,
-        variables.PATH_AJUSTES_2
-    ]
-    
-    # Escolhe aleatoriamente um caminho de imagem
+    image_paths = [variables.PATH_AJUSTES_1, variables.PATH_AJUSTES_2]
     chosen_image_path = random.choice(image_paths)
-    
-    # Abre e envia a imagem
     with open(chosen_image_path, "rb") as image_file:
         await ctx.send(file=discord.File(image_file, "imagem.png"))
+
 
 @bot.command()
 async def fix(ctx):
     user_id_permitido = variables.USER_ID_PERMITIDO
-
-    # Verifica se o autor do comando é o usuário permitido
     if ctx.author.id == user_id_permitido:
-        # Se for o usuário permitido, execute o código do comando
         await ctx.message.delete()
         await enviar_imagem_aleatoria(ctx)
         await ctx.send("Aura BOT está offline para manutenção.")
         exit()
     else:
-        # Se não for o usuário permitido, informe que não tem permissão
         await ctx.send("Desculpe, você não tem permissão para executar este comando.")
-    
 
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
-    # ID do canal onde você deseja enviar a mensagem
     channel_id = variables.CHANNEL_ID
-    
-    # Obtém o objeto do canal
     channel = bot.get_channel(channel_id)
-    
     if channel:
         await channel.send("Aura BOT está online.")
     else:
@@ -98,7 +80,6 @@ async def leave(ctx):
     await ctx.send("Aura foi desconectado do servidor.")
 
 
-# Extrai as informações de uma track
 def extract_track_info(info):
     if "entries" in info:
         url = info["entries"][0]["url"]
@@ -108,25 +89,18 @@ def extract_track_info(info):
         url = info["url"]
         title = info["title"]
         duration = info["duration"]
-
     duration_minutes = int(duration // 60)
     duration_seconds = int(duration % 60)
     duration = f"{duration_minutes}:{duration_seconds}"
+    msg = f"Adicionado à fila: **{title}** `({duration})`"
+    return {"url": url, "title": title, "duration": duration, "message": msg}
 
-    return {"url": url, "title": title, "duration": duration}
 
 async def add_music_to_queue(ctx, info):
-    obj = extract_track_info(info)  # Correção aqui
-    msg = await ctx.send(f"Adicionado à fila: **{obj['title']}** `({obj['duration']})`")
-    QUEUE.append(
-        {
-            "url": obj["url"],
-            "title": obj["title"],
-            "duration": obj["duration"],
-            "message": msg,
-        }
-    )
-
+    obj = extract_track_info(info)
+    
+    obj['message'] = await ctx.send(obj["message"])
+    QUEUE.append(obj)
 
 
 @bot.command(aliases=["p"])
@@ -138,7 +112,6 @@ async def play(ctx, *, query):
         voice_client = ctx.voice_client
     else:
         voice_client = ctx.voice_client
-
     ydl_opts = {
         "format": "bestaudio/best",
         "postprocessors": [
@@ -149,46 +122,38 @@ async def play(ctx, *, query):
             }
         ],
     }
-
     ydl = youtube_dl.YoutubeDL(ydl_opts)
-
     try:
         # Se for uma track do Spotify
         if "spotify.com" in query and not "/playlist/" in query:
-            print("Busca por track do Spotify")
             track_id = query.split("/")[-1].split("?")[0]
             track_info = sp.track(track_id)
             track_name = track_info["name"]
-            query = track_name
-        # Se for uma playlist do Spotify
-        if "spotify.com" in query and "/playlist/" in query:
-            print("Busca por playlist do Spotify")
-            playlist_id = query.split("/")[-1].split("?")[0]
-            playlist_info = sp.playlist(playlist_id)
-            track_ids_spotify = [
-                f'{track["track"]["name"]} - {track["track"]["artists"][0]["name"]}'
-                for track in playlist_info["tracks"]["items"]
-            ]
-            print(track_ids_spotify)
-        # Se for um link do YouTube
-        if "youtube.com" in query or "youtu.be" in query:
-            print("Busca por link do YouTube")
+            track_artist = track_info["artists"][0]["name"]
+            query = f"ytsearch:{track_name} - {track_artist}"
             info = ydl.extract_info(query, download=False)
+        # Se for uma playlist do Spotify
+        elif "spotify.com" in query and "/playlist/" in query:
+            await ctx.send("A reprodução de playlists do Spotify está desabilitada.")
+            return
+        # Se for um link do YouTube
+        elif ("youtube.com" in query or "youtu.be" in query) and (
+            not "playlist" in query
+        ):
+            info = ydl.extract_info(query, download=False)
+        # Se for uma playlist do YouTube
+        elif ("youtube.com" in query or "youtu.be" in query) and ("playlist" in query):
+            await ctx.send("A reprodução de playlists do YouTube está desabilitada.")
+            return
         # Se for uma pesquisa por texto
         else:
-            print("Pesquisa por texto")
             query = f"ytsearch:{query}"
             info = ydl.extract_info(query, download=False)
-
     except:
-        # Se der bigode
         return await ctx.send("Música não encontrada.")
-
     # Deleta a mensagem "Procurando..."
     await msg.delete()
-
     await add_music_to_queue(ctx, info)
-
     if not voice_client.is_playing():
         await play_queue(ctx, voice_client)
 
@@ -217,11 +182,12 @@ async def play_queue(ctx, voice_client):
         obj = QUEUE.pop(0)
         url = obj["url"]
         if obj["title"]:
-            emoji = discord.PartialEmoji(name=variables.PLAY_EMOJI_NAME, id=variables.PLAY_EMOJI_ID)
+            emoji = discord.PartialEmoji(
+                name=variables.PLAY_EMOJI_NAME, id=variables.PLAY_EMOJI_ID
+            )
             await obj["message"].delete()
             await ctx.send(f"{emoji} **{obj['title']}** `({obj['duration']})`")
         voice_client.stop()
-
         voice_client.play(
             discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS),
             after=lambda e: bot.loop.create_task(play_queue(ctx, voice_client)),
