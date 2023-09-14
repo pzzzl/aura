@@ -25,59 +25,7 @@ sp = spotipy.Spotify(
 )
 
 
-@bot.command()
-async def enviar_imagem_aleatoria(ctx):
-    image_paths = [variables.PATH_AJUSTES_1, variables.PATH_AJUSTES_2]
-    chosen_image_path = random.choice(image_paths)
-    with open(chosen_image_path, "rb") as image_file:
-        await ctx.send(file=discord.File(image_file, "imagem.png"))
-
-
-@bot.command()
-async def fix(ctx):
-    user_id_permitido = variables.USER_ID_PERMITIDO
-    if ctx.author.id == user_id_permitido:
-        await ctx.message.delete()
-        await enviar_imagem_aleatoria(ctx)
-        await ctx.send("Aura BOT está offline para manutenção.")
-        exit()
-    else:
-        await ctx.send("Desculpe, você não tem permissão para executar este comando.")
-
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user.name}")
-    channel_id = variables.CHANNEL_ID
-    channel = bot.get_channel(channel_id)
-    if channel:
-        await channel.send("Aura BOT está online.")
-    else:
-        print(f"Canal com ID {channel_id} não encontrado.")
-
-
-@bot.command()
-async def ajuda(ctx):
-    await ctx.send(
-        "**Bem vindo ao Aura BOT**\n\nCOMANDOS\n\n• *join* | j\n• *disconnect* | dc, exit, quit, leave\n• *play* | p\n• *next* | n, skip, s\n• *queue* | q"
-    )
-
-
-@bot.command(aliases=["j"])
-async def join(ctx):
-    channel = ctx.author.voice.channel
-    if ctx.voice_client is None:
-        await channel.connect()
-    else:
-        await ctx.voice_client.move_to(channel)
-    await ctx.send("Aura conectou ao servidor.")
-
-
-@bot.command(aliases=["exit", "quit", "dc", "disconnect"])
-async def leave(ctx):
-    await ctx.voice_client.disconnect()
-    QUEUE.clear()
-    await ctx.send("Aura foi desconectado do servidor.")
+# region Play
 
 
 def extract_track_info(info):
@@ -91,7 +39,12 @@ def extract_track_info(info):
         duration = info["duration"]
     duration_minutes = int(duration // 60)
     duration_seconds = int(duration % 60)
-    duration = f"{duration_minutes}:{duration_seconds}"
+
+    # Formate os minutos e segundos para terem dois dígitos, preenchendo com zero à esquerda, se necessário
+    duration_minutes_str = str(duration_minutes).zfill(2)
+    duration_seconds_str = str(duration_seconds).zfill(2)
+
+    duration = f"{duration_minutes_str}:{duration_seconds_str}"
     msg = f"Adicionado à fila: **{title}** `({duration})`"
     return {"url": url, "title": title, "duration": duration, "message": msg}
 
@@ -103,7 +56,26 @@ async def add_music_to_queue(ctx, info):
     QUEUE.append(obj)
 
 
-@bot.command(aliases=["p"])
+async def play_queue(ctx, voice_client):
+    if QUEUE:
+        obj = QUEUE.pop(0)
+        url = obj["url"]
+        if obj["title"]:
+            emoji = discord.PartialEmoji(
+                name=variables.PLAY_EMOJI_NAME, id=variables.PLAY_EMOJI_ID
+            )
+            await obj["message"].delete()
+            await ctx.send(f"{emoji} **{obj['title']}** `({obj['duration']})`")
+        voice_client.stop()
+        voice_client.play(
+            discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS),
+            after=lambda e: bot.loop.create_task(play_queue(ctx, voice_client)),
+        )
+    else:
+        await ctx.send("Reprodução finalizada.")
+
+
+@bot.command(aliases=["p", "P"])
 async def play(ctx, *, query):
     msg = await ctx.send("Procurando...")
     voice_channel = ctx.author.voice.channel
@@ -158,6 +130,28 @@ async def play(ctx, *, query):
         await play_queue(ctx, voice_client)
 
 
+# endregion
+
+# region Interactions
+
+
+@bot.command(aliases=["j"])
+async def join(ctx):
+    channel = ctx.author.voice.channel
+    if ctx.voice_client is None:
+        await channel.connect()
+    else:
+        await ctx.voice_client.move_to(channel)
+    await ctx.send("Aura conectou ao servidor.")
+
+
+@bot.command(aliases=["exit", "quit", "dc", "disconnect"])
+async def leave(ctx):
+    await ctx.voice_client.disconnect()
+    QUEUE.clear()
+    await ctx.send("Aura foi desconectado do servidor.")
+
+
 @bot.command(aliases=["next", "n", "s"])
 async def skip(ctx):
     if ctx.voice_client and ctx.voice_client.is_playing():
@@ -177,23 +171,53 @@ async def queue(ctx):
         await ctx.send(out)
 
 
-async def play_queue(ctx, voice_client):
-    if QUEUE:
-        obj = QUEUE.pop(0)
-        url = obj["url"]
-        if obj["title"]:
-            emoji = discord.PartialEmoji(
-                name=variables.PLAY_EMOJI_NAME, id=variables.PLAY_EMOJI_ID
-            )
-            await obj["message"].delete()
-            await ctx.send(f"{emoji} **{obj['title']}** `({obj['duration']})`")
-        voice_client.stop()
-        voice_client.play(
-            discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS),
-            after=lambda e: bot.loop.create_task(play_queue(ctx, voice_client)),
-        )
-    else:
-        await ctx.send("Reprodução finalizada.")
+# endregion
 
+# region Others
+
+
+@bot.command()
+async def enviar_imagem_aleatoria(ctx):
+    image_paths = [variables.PATH_AJUSTES_1, variables.PATH_AJUSTES_2]
+    chosen_image_path = random.choice(image_paths)
+    with open(chosen_image_path, "rb") as image_file:
+        await ctx.send(file=discord.File(image_file, "imagem.png"))
+
+
+@bot.command()
+async def fix(ctx):
+    user_id_permitido = variables.USER_ID_PERMITIDO
+    if ctx.author.id == user_id_permitido:
+        await ctx.message.delete()
+        await enviar_imagem_aleatoria(ctx)
+        await ctx.send("Aura BOT está offline para manutenção.")
+        exit()
+    else:
+        await ctx.send("Desculpe, você não tem permissão para executar este comando.")
+
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user.name}")
+    channel_id = variables.CHANNEL_ID
+    channel = bot.get_channel(channel_id)
+    if channel:
+        image_paths = [variables.PATH_ON_1, variables.PATH_ON_2, variables.PATH_ON_3, variables.PATH_ON_4, variables.PATH_ON_5, variables.PATH_ON_6, variables.PATH_ON_7]
+        chosen_image_path = random.choice(image_paths)
+        with open(chosen_image_path, "rb") as image_file:
+            await channel.send(file=discord.File(image_file, "imagem.png"))
+        await channel.send("Aura BOT está online.")
+    else:
+        print(f"Canal com ID {channel_id} não encontrado.")
+
+
+@bot.command()
+async def ajuda(ctx):
+    await ctx.send(
+        "**Bem vindo ao Aura BOT**\n\nCOMANDOS\n\n• *join* | j\n• *disconnect* | dc, exit, quit, leave\n• *play* | p\n• *next* | n, skip, s\n• *queue* | q"
+    )
+
+
+# endregion
 
 bot.run(variables.TOKEN)
