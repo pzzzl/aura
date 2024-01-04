@@ -34,7 +34,7 @@
    - Download FFMPEG [here](https://ffmpeg.org/download.html) and provide the executable path in `variables.py`.
 
 5. **Running the Bot:**
-   - Execute the bot using the command `python bot.py`.
+   - Execute the bot using the command `python aura.py`.
 
 ## Commands
 
